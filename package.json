@@ -7,9 +7,9 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "cd farmerjoe && npm run dev",
+    "build": "cd farmerjoe && npm run build",
+    "start": "cd farmerjoe && npm run start",
     "lint": "eslint farmerjoe/app",
     "lint:fix": "eslint farmerjoe/app --fix",
     "format": "prettier --write farmerjoe/app",
