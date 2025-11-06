@@ -1,0 +1,40 @@
+{
+  "name": "farmer-joe",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint farmerjoe/app --ext .ts,.tsx && prettier --check farmerjoe/app",
+    "format": "prettier --write src",
+    "test": "playwright test",
+    "test:watch": "playwright test --ui",
+    "test:report": "playwright show-report"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^5.14.0",
+    "@mui/material": "^5.14.0",
+    "glob": "^11.0.3",
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "rimraf": "^6.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^20.19.24",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.3",
+    "@typescript-eslint/parser": "^8.46.3",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "^16.0.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
