@@ -1,14 +1,14 @@
 services:
   nextjs-app:
     build:
-      context: .
+      context: ./farmerjoe
       dockerfile: farmerjoe/Dockerfile
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=development
+      - WATCHPACK_POLLING=true
       # - TURBOPACK_ROOT=farmerjoe # Explicitly set the Next.js project root, may cause issues if WORKDIR is already /app
-      - NODE_ENV=development # Ensure NODE_ENV is development for local runs
     volumes:
       - ./farmerjoe:/app # Mount the application code
       - /app/node_modules # Keep container-installed node_modules (Linux binaries)

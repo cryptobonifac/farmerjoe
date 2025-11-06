@@ -2,12 +2,18 @@
   "name": "farmer-joe",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint farmerjoe/app --ext .ts,.tsx && prettier --check farmerjoe/app",
-    "format": "prettier --write src",
+    "lint": "eslint farmerjoe/app",
+    "lint:fix": "eslint farmerjoe/app --fix",
+    "format": "prettier --write farmerjoe/app",
+    "format:check": "prettier --check farmerjoe/app",
     "test": "playwright test",
     "test:watch": "playwright test --ui",
     "test:report": "playwright show-report"

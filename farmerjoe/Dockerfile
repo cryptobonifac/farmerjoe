@@ -1,5 +1,5 @@
 # Stage 1: Development environment
-FROM node:20-alpine AS development
+FROM node:24-alpine AS development
 
 WORKDIR /app
 
