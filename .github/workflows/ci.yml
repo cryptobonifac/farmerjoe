@@ -144,6 +144,11 @@ jobs:
           podman compose ps
           curl -f http://localhost:3000 || exit 1
 
+      - name: Install Playwright
+        run: npx playwright install 
+        env:
+          CI: true
+
       - name: Run Playwright tests
         run: npx playwright test
         env:
