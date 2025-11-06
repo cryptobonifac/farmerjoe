@@ -120,17 +120,34 @@ jobs:
       - name: Start services with Podman Compose
         run: |
           podman compose up -d --build
-          # Wait for services to be ready
-          sleep 10
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for Next.js server to be ready..."
+          timeout=60
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            if curl -f http://localhost:3000 > /dev/null 2>&1; then
+              echo "Server is ready!"
+              exit 0
+            fi
+            echo "Waiting for server... ($elapsed/$timeout seconds)"
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+          echo "Server did not become ready in time"
+          podman compose logs
+          exit 1
 
       - name: Check service health
         run: |
           podman compose ps
-          # Optional: Add health check for your web service
-          # curl --retry 10 --retry-delay 3 --retry-connrefused http://localhost:3000/api/health || true
+          curl -f http://localhost:3000 || exit 1
 
       - name: Run Playwright tests
         run: npx playwright test
+        env:
+          CI: true
 
       - name: Upload test results
         if: always()

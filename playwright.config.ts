@@ -83,10 +83,10 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
-  webServer: {
+  webServer: process.env.CI ? undefined : {
     command: 'npm run dev', // Command to start the Next.js development server
     url: 'http://localhost:3000', // URL of the development server
-    reuseExistingServer: !process.env.CI, // Reuse server if already running, unless in CI
+    reuseExistingServer: true, // Reuse server if already running
     env: {
       TURBOPACK_ROOT: 'farmerjoe', // Explicitly set the Next.js project root
     },
