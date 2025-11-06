@@ -84,8 +84,27 @@ jobs:
         working-directory: ./farmerjoe
         run: npm ci
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-browsers-cache
+        with:
+          path: |
+            ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-browsers-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-browsers-
+
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+        run: |
+          if [ "${{ steps.playwright-browsers-cache.outputs.cache-hit }}" != "true" ]; then
+            echo "Cache miss: Installing Playwright browsers with system dependencies..."
+            npx playwright install --with-deps chromium firefox webkit
+          else
+            echo "Cache hit: Browsers already installed, skipping download (saves ~300MB)"
+            # System dependencies are already installed from previous runs
+          fi
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
 
       - name: Install Podman
         run: |
