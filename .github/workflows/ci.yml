@@ -52,8 +52,23 @@ jobs:
         working-directory: ./farmerjoe
         run: npm ci
 
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        id: nextjs-cache
+        with:
+          path: |
+            farmerjoe/.next/cache
+            farmerjoe/.next/standalone
+            farmerjoe/.next/static
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('farmerjoe/**/*.ts', 'farmerjoe/**/*.tsx', 'farmerjoe/**/*.js', 'farmerjoe/**/*.jsx', 'farmerjoe/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-
+
       - name: Build Next.js application
+        working-directory: ./farmerjoe
         run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
