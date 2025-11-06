@@ -67,7 +67,7 @@ jobs:
   e2e-tests:
     runs-on: ubuntu-latest
     name: Run E2E Tests with Podman Compose
-    needs: [lint]
+    needs: [build, docker-build]
     steps:
       - uses: actions/checkout@v3
 
