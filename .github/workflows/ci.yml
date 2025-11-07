@@ -434,6 +434,11 @@ jobs:
 
       - name: Update pages-reports branch
         run: |
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$CURRENT_BRANCH" = "HEAD" ]; then
+            CURRENT_BRANCH=${GITHUB_REF_NAME:-${GITHUB_REF##*/}}
+          fi
+
           if git show-ref --verify --quiet refs/remotes/origin/pages-reports; then
             git checkout -b pages-reports origin/pages-reports 2>/dev/null || git checkout pages-reports
           else
@@ -445,14 +450,17 @@ jobs:
           cp -r pages-report/runs . 2>/dev/null || true
           cp pages-report/index.html . 2>/dev/null || true
 
-          git add runs/ index.html 2>/div/null || true
+          git add runs/ index.html 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
             git commit -m "Update test reports - Run $RUN_ID (keeping last 10 reports)" || echo "Nothing to commit"
             git push origin pages-reports || echo "Failed to push"
           fi
-          git checkout -
+
+          if [ -n "$CURRENT_BRANCH" ]; then
+            git checkout "$CURRENT_BRANCH" || true
+          fi
 
       - name: Output report URL
         id: report-summary
