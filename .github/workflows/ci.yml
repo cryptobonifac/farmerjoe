@@ -213,59 +213,14 @@ jobs:
           path: test-results/
           retention-days: 7
 
-      - name: Generate test results summary
-        if: always()
-        run: |
-          echo "## 🧪 Playwright Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f playwright-report/index.html ]; then
-            echo "### ✅ Test Report Available" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "📊 **View Test Report:**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
-              echo "🌐 **Published to GitHub Pages:**" >> $GITHUB_STEP_SUMMARY
-              echo "- Main branch runs publish a **unique test report URL**" >> $GITHUB_STEP_SUMMARY
-              echo "- This run's report will be available at a unique path" >> $GITHUB_STEP_SUMMARY
-              echo "- Check the \`deploy-test-report\` job below for the exact URL" >> $GITHUB_STEP_SUMMARY
-              REPO_NAME=$(echo "${{ github.repository }}" | awk -F'/' '{print $2}')
-              RUN_ID="${{ github.run_id }}"
-              SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-              BRANCH_NAME="${{ github.ref_name }}"
-              echo "- Format: \`https://${{ github.repository_owner }}.github.io/$REPO_NAME/runs/run-{RUN_ID}-{BRANCH}-{SHA}-{TIMESTAMP}/\`" >> $GITHUB_STEP_SUMMARY
-              echo "- Main index: \`https://${{ github.repository_owner }}.github.io/$REPO_NAME/\`" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-            fi
-            if [ "${{ github.event_name }}" == "push" ] && { [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.ref }}" == "refs/heads/develop" ]; }; then
-              echo "- ✅ GitHub Pages deployment is enabled for this branch" >> $GITHUB_STEP_SUMMARY
-              echo "- See the \`deploy-test-report\` job below for the live report URL" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "- ℹ️ GitHub Pages deployment runs only on \\`main\\` and \\`develop\\`" >> $GITHUB_STEP_SUMMARY
-              echo "- You can manually run the workflow on one of those branches to publish a page" >> $GITHUB_STEP_SUMMARY
-            fi
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Quick Links:**" >> $GITHUB_STEP_SUMMARY
-            echo "- [View this workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
-            echo "- [All workflow runs](${{ github.server_url }}/${{ github.repository }}/actions)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "### ⚠️ No test report generated" >> $GITHUB_STEP_SUMMARY
-            echo "The test report was not generated. Check the test execution logs above." >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "**Workflow:** \`${{ github.workflow }}\` | **Run ID:** \`${{ github.run_id }}\` | **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-
-      - name: Stop services
-        if: always()
-        run: |
-          podman compose logs
-          podman compose down -v
-
   deploy-test-report:
     runs-on: ubuntu-latest
     name: Deploy Test Report to GitHub Pages
     needs: [e2e-tests]
     if: always() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    outputs:
+      report_url: ${{ steps.report-summary.outputs.report_url }}
+      unique_dir: ${{ steps.prepare-report.outputs.unique_dir }}
     permissions:
       contents: read
       pages: write
@@ -467,6 +422,14 @@ jobs:
           echo "RUN_ID=${RUN_ID}" >> $GITHUB_ENV
           echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
           echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+          UNIQUE_DIR_PATH="runs/${UNIQUE_DIR}"
+          echo "UNIQUE_DIR=${UNIQUE_DIR_PATH}" >> $GITHUB_ENV
+          echo "REPORT_URL=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/${UNIQUE_DIR_PATH}/" >> $GITHUB_ENV
+          echo "RUN_ID=${RUN_ID}" >> $GITHUB_ENV
+          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+          echo "unique_dir=${UNIQUE_DIR_PATH}" >> $GITHUB_OUTPUT
+          echo "report_url=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/${UNIQUE_DIR_PATH}/" >> $GITHUB_OUTPUT
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -505,6 +468,7 @@ jobs:
           git checkout -
 
       - name: Output report URL
+        id: report-summary
         run: |
           REPO_NAME=$(echo "${{ github.repository }}" | awk -F'/' '{print $2}')
           echo "## 📊 Test Report Deployed" >> $GITHUB_STEP_SUMMARY
@@ -521,6 +485,7 @@ jobs:
           echo "- Reports kept: \`${REMAINING_COUNT}/10\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🌐 **Main Index:** [View All Reports](https://${{ github.repository_owner }}.github.io/$REPO_NAME/)" >> $GITHUB_STEP_SUMMARY
+          echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
 
   docker-build:
     runs-on: ubuntu-latest
@@ -575,4 +540,37 @@ jobs:
         run: |
           echo "Deploying to ${{ steps.env.outputs.environment }}"
           # Add your deployment commands here
+
+  report-summary:
+    runs-on: ubuntu-latest
+    name: Publish Playwright Summary
+    needs: [e2e-tests, deploy-test-report]
+    if: always()
+    steps:
+      - name: Write final summary
+        run: |
+          echo "## 🧪 Playwright Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.e2e-tests.result }}" == "success" ]; then
+            echo "### ✅ Playwright suite completed successfully" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.e2e-tests.result }}" == "cancelled" ]; then
+            echo "### ⚠️ Playwright suite was cancelled" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Playwright suite failed" >> $GITHUB_STEP_SUMMARY
+            echo "Check the e2e-tests job logs for details." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.deploy-test-report.result }}" == "success" ] && [ -n "${{ needs.deploy-test-report.outputs.report_url }}" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🌐 **Live GitHub Pages report:**" >> $GITHUB_STEP_SUMMARY
+            echo "- [Open Playwright report](${{ needs.deploy-test-report.outputs.report_url }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ GitHub Pages report unavailable for this run." >> $GITHUB_STEP_SUMMARY
+            echo "- Branch: \`${{ github.ref }}\\`" >> $GITHUB_STEP_SUMMARY
+            echo "- Ensure Pages environment allows deployments from this branch." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow:** \`${{ github.workflow }}\` | **Run ID:** \`${{ github.run_id }}\` | **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
 
