@@ -356,7 +356,7 @@ jobs:
           fi
           
           # Create index.html with all reports
-          cat <<'EOF' > pages-report/index.html
+          cat <<EOF > pages-report/index.html
           <!DOCTYPE html>
           <html lang="en">
           <head>
