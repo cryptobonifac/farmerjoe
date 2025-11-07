@@ -118,14 +118,26 @@ jobs:
       - name: Install Playwright browsers
         run: |
           if [ "${{ steps.playwright-browsers-cache.outputs.cache-hit }}" != "true" ]; then
-            echo "Cache miss: Installing Playwright browsers with system dependencies..."
-            npx playwright install --with-deps chromium firefox webkit
+            echo "Cache miss: Installing Playwright browsers..."
+            npx playwright install chromium firefox webkit
           else
             echo "Cache hit: Browsers already installed, skipping download (saves ~300MB)"
-            # System dependencies are already installed from previous runs
           fi
         env:
           PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          # Install Playwright system dependencies (always needed, even with cached browsers)
+          echo "Installing system dependencies for Playwright browsers..."
+          # Install deps for all browsers - this ensures WebKit dependencies are installed
+          npx playwright install-deps chromium firefox webkit
+          # Update library cache to ensure all installed libraries are found
+          sudo ldconfig
+          # Verify WebKit can find required libraries
+          echo "Checking for WebKit dependencies..."
+          ldconfig -p | grep -E "(woff|font)" || echo "Library check completed"
 
       - name: Install Podman
         run: |
