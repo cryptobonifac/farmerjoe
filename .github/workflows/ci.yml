@@ -1,0 +1,568 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, staging, develop]
+  pull_request:
+    branches: [main, staging]
+
+# Enable GitHub Pages deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    name: Lint Code
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            farmerjoe/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install farmerjoe dependencies
+        working-directory: ./farmerjoe
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+  build:
+    runs-on: ubuntu-latest
+    name: Build Application
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            farmerjoe/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install farmerjoe dependencies
+        working-directory: ./farmerjoe
+        run: npm ci
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        id: nextjs-cache
+        with:
+          path: |
+            farmerjoe/.next/cache
+            farmerjoe/.next/standalone
+            farmerjoe/.next/static
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('farmerjoe/**/*.ts', 'farmerjoe/**/*.tsx', 'farmerjoe/**/*.js', 'farmerjoe/**/*.jsx', 'farmerjoe/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-
+
+      - name: Build Next.js application
+        working-directory: ./farmerjoe
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            farmerjoe/.next
+            farmerjoe/public
+          retention-days: 1
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    name: Run E2E Tests with Podman Compose
+    needs: [build, docker-build]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install farmerjoe dependencies
+        working-directory: ./farmerjoe
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-browsers-cache
+        with:
+          path: |
+            ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-browsers-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-browsers-
+
+      - name: Install Playwright browsers
+        run: |
+          if [ "${{ steps.playwright-browsers-cache.outputs.cache-hit }}" != "true" ]; then
+            echo "Cache miss: Installing Playwright browsers..."
+            npx playwright install chromium firefox webkit
+          else
+            echo "Cache hit: Browsers already installed, skipping download (saves ~300MB)"
+          fi
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq >/dev/null 2>&1
+          # Install Playwright system dependencies (always needed, even with cached browsers)
+          echo "Installing system dependencies for Playwright browsers..."
+          # Install deps for all browsers - this ensures WebKit dependencies are installed
+          npx playwright install-deps chromium firefox webkit
+          # Update library cache to ensure all installed libraries are found
+          sudo ldconfig
+          # Verify WebKit can find required libraries
+          echo "Checking for WebKit dependencies..."
+          ldconfig -p | grep -E "(woff|font)" || echo "Library check completed"
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update -qq >/dev/null 2>&1
+          sudo apt-get install -y -qq podman podman-compose >/dev/null 2>&1
+
+      - name: Start Podman socket
+        run: |
+          systemctl --user start podman.socket
+          export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+          echo "DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock" >> $GITHUB_ENV
+
+      - name: Start services with Podman Compose
+        run: |
+          podman compose up -d --build
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for Next.js server to be ready..."
+          timeout=60
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            if curl -f http://localhost:3000 > /dev/null 2>&1; then
+              echo "Server is ready!"
+              exit 0
+            fi
+            echo "Waiting for server... ($elapsed/$timeout seconds)"
+            sleep 2
+            elapsed=$((elapsed + 2))
+          done
+          echo "Server did not become ready in time"
+          podman compose logs
+          exit 1
+
+      - name: Check service health
+        run: |
+          podman compose ps
+          curl -f http://localhost:3000 || exit 1
+
+      - name: Install Playwright
+        run: npx playwright install 
+        env:
+          CI: true
+
+      - name: Run Playwright tests
+        run: npx playwright test
+        env:
+          CI: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        id: upload-report
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-videos
+          path: test-results/
+          retention-days: 7
+
+  deploy-test-report:
+    runs-on: ubuntu-latest
+    name: Deploy Test Report to GitHub Pages
+    needs: [e2e-tests]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      report_url: ${{ steps.report-summary.outputs.report_url }}
+      unique_dir: ${{ steps.prepare-report.outputs.unique_dir }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'github-pages' || format('report-preview-{0}', github.ref_name) }}
+      url: ${{ github.ref == 'refs/heads/main' && steps.deployment.outputs.page_url || '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download test report artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+
+      - name: Setup Git for pages branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+ 
+      - name: Fetch existing reports from pages branch
+        run: |
+          git fetch origin +refs/heads/pages-reports:refs/remotes/origin/pages-reports 2>/dev/null || echo "No pages-reports branch found"
+
+          if git show-ref --verify --quiet refs/remotes/origin/pages-reports; then
+            git checkout -b pages-reports origin/pages-reports 2>/dev/null || git checkout pages-reports 2>/dev/null || true
+            if [ -d "runs" ]; then
+              mkdir -p ../existing-pages
+              cp -r runs ../existing-pages/ 2>/dev/null || true
+            fi
+            git checkout -
+          else
+            mkdir -p ../existing-pages
+          fi
+
+      - name: Prepare unique report directory and cleanup old reports
+        id: prepare-report
+        run: |
+          RUN_ID="${{ github.run_id }}"
+          COMMIT_SHA="${{ github.sha }}"
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          BRANCH_NAME="${{ github.ref_name }}"
+          TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+          
+          # Create unique directory name: run-{run_id}-{branch}-{short_sha}-{timestamp}
+          UNIQUE_DIR="runs/run-${RUN_ID}-${BRANCH_NAME}-${SHORT_SHA}-${TIMESTAMP}"
+          
+          # Create the directory structure
+          mkdir -p pages-report/${UNIQUE_DIR}
+          
+          # Copy the report to the unique directory
+          cp -r playwright-report/* pages-report/${UNIQUE_DIR}/
+          
+          # Copy existing reports if they exist
+          if [ -d "existing-pages/runs" ]; then
+            echo "Found existing reports, copying..."
+            cp -r existing-pages/runs/* pages-report/runs/ 2>/dev/null || true
+          fi
+          
+          # Keep only the last 10 reports (including the new one)
+          echo "Managing report retention (keeping last 10 reports)..."
+          cd pages-report/runs
+          
+          # List all report directories, sort by name (which includes timestamp), keep last 10
+          if [ -d "run-"* ] 2>/dev/null; then
+            # Sort directories by name (newest last due to timestamp format), get last 10
+            KEEP_DIRS=$(ls -1d run-* 2>/dev/null | tail -n 10)
+            
+            # Remove directories not in the keep list
+            for dir in run-*; do
+              if [ -d "$dir" ]; then
+                KEEP_THIS=false
+                for keep_dir in $KEEP_DIRS; do
+                  if [ "$dir" == "$keep_dir" ]; then
+                    KEEP_THIS=true
+                    break
+                  fi
+                done
+                if [ "$KEEP_THIS" == "false" ]; then
+                  echo "Removing old report: $dir"
+                  rm -rf "$dir"
+                else
+                  echo "Keeping report: $dir"
+                fi
+              fi
+            done
+          fi
+          
+          cd ../..
+          
+          # Count remaining reports
+          REMAINING_COUNT=$(find pages-report/runs -maxdepth 1 -type d -name "run-*" 2>/dev/null | wc -l)
+          echo "REMAINING_COUNT=${REMAINING_COUNT}" >> $GITHUB_ENV
+          
+          # Generate list of all reports for index.html (newest first)
+          REPORT_LIST=""
+          LATEST_REPORT=""
+          if [ -d "pages-report/runs" ]; then
+            cd pages-report/runs
+            # Get all reports sorted by name (newest last), reverse to show newest first
+            for dir in $(ls -1d run-* 2>/dev/null | tail -n 10 | tac); do
+              if [ -d "$dir" ]; then
+                # Extract info from directory name: run-{RUN_ID}-{BRANCH}-{SHA}-{TIMESTAMP}
+                DIR_NAME=$(basename "$dir")
+                if [ -z "$LATEST_REPORT" ]; then
+                  LATEST_REPORT="$dir"
+                fi
+                # Parse directory name
+                RUN_NUM=$(echo "$DIR_NAME" | cut -d'-' -f2)
+                BRANCH=$(echo "$DIR_NAME" | cut -d'-' -f3)
+                SHA=$(echo "$DIR_NAME" | cut -d'-' -f4)
+                TS=$(echo "$DIR_NAME" | cut -d'-' -f5-)
+                REPORT_LIST="${REPORT_LIST}<li><a href=\"runs/${DIR_NAME}/index.html\">Run ${RUN_NUM} - ${BRANCH} - ${SHA} - ${TS}</a><div class=\"meta\">Branch: <strong>${BRANCH}</strong> | Commit: <code>${SHA}</code> | Run ID: <strong>#${RUN_NUM}</strong></div></li>"
+              fi
+            done
+            cd ../..
+          fi
+          
+          # If no reports found, use current run as latest
+          if [ -z "$LATEST_REPORT" ]; then
+            LATEST_REPORT="$UNIQUE_DIR"
+            LATEST_RUN_NUM="$RUN_ID"
+            LATEST_BRANCH="$BRANCH_NAME"
+            LATEST_SHA="$SHORT_SHA"
+            LATEST_TS="$TIMESTAMP"
+          else
+            # Extract latest report info
+            LATEST_RUN_NUM=$(echo "$LATEST_REPORT" | cut -d'-' -f2)
+            LATEST_BRANCH=$(echo "$LATEST_REPORT" | cut -d'-' -f3)
+            LATEST_SHA=$(echo "$LATEST_REPORT" | cut -d'-' -f4)
+            LATEST_TS=$(echo "$LATEST_REPORT" | cut -d'-' -f5-)
+          fi
+          
+          # Create index.html with all reports
+          cat <<'EOF' > pages-report/index.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Playwright Test Reports</title>
+              <style>
+                  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 40px; background: #f5f5f5; }
+                  .container { max-width: 900px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+                  h1 { color: #24292e; border-bottom: 3px solid #0366d6; padding-bottom: 15px; margin-top: 0; }
+                  .latest { background: #e6f7ff; border-left: 4px solid #0366d6; padding: 15px; margin: 20px 0; border-radius: 4px; }
+                  .latest h2 { margin-top: 0; color: #0366d6; }
+                  ul { list-style: none; padding: 0; margin: 20px 0; }
+                  li { margin: 12px 0; padding: 15px; background: #f8f9fa; border-left: 4px solid #0366d6; border-radius: 4px; transition: background 0.2s; }
+                  li:hover { background: #e9ecef; }
+                  a { color: #0366d6; text-decoration: none; font-weight: 500; font-size: 16px; }
+                  a:hover { text-decoration: underline; }
+                  .meta { color: #586069; font-size: 0.9em; margin-top: 8px; }
+                  .badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 0.85em; font-weight: 600; margin-left: 8px; }
+                  .badge-branch { background: #d1ecf1; color: #0c5460; }
+                  .badge-sha { background: #f8d7da; color: #721c24; }
+                  .badge-run { background: #d4edda; color: #155724; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🧪 Playwright Test Reports</h1>
+                  
+                  <div class="latest">
+                      <h2>📊 Latest Test Run</h2>
+                      <p><strong><a href="runs/${LATEST_REPORT}/index.html">Run ${LATEST_RUN_NUM}</a></strong></p>
+                      <div class="meta">
+                          <span class="badge badge-branch">${LATEST_BRANCH}</span>
+                          <span class="badge badge-sha">${LATEST_SHA}</span>
+                          <span class="badge badge-run">Run #${LATEST_RUN_NUM}</span>
+                          <br>
+                          <strong>Timestamp:</strong> ${LATEST_TS} UTC
+                      </div>
+                  </div>
+                  
+                  <h2>Recent Test Runs (Last ${REMAINING_COUNT})</h2>
+                  <ul>
+                      ${REPORT_LIST}
+                  </ul>
+                  
+                  <p style="color: #586069; font-size: 0.9em; margin-top: 30px;">
+                      Showing the last 10 test reports. Older reports are automatically removed to save space.
+                  </p>
+              </div>
+          </body>
+          </html>
+          EOF
+          
+          # Save metadata for summary
+          echo "UNIQUE_DIR=${UNIQUE_DIR}" >> $GITHUB_ENV
+          echo "REPORT_URL=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/${UNIQUE_DIR}/" >> $GITHUB_ENV
+          echo "RUN_ID=${RUN_ID}" >> $GITHUB_ENV
+          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+          UNIQUE_DIR_PATH="runs/${UNIQUE_DIR}"
+          echo "UNIQUE_DIR=${UNIQUE_DIR_PATH}" >> $GITHUB_ENV
+          echo "report_url=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/${UNIQUE_DIR_PATH}/" >> $GITHUB_ENV
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages-report/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Update pages-reports branch
+        run: |
+          if git show-ref --verify --quiet refs/remotes/origin/pages-reports; then
+            git checkout -b pages-reports origin/pages-reports 2>/dev/null || git checkout pages-reports
+          else
+            git checkout --orphan pages-reports
+            git rm -rf . 2>/dev/null || true
+          fi
+
+          rm -rf runs/ index.html 2>/dev/null || true
+          cp -r pages-report/runs . 2>/dev/null || true
+          cp pages-report/index.html . 2>/dev/null || true
+
+          git add runs/ index.html 2>/div/null || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update test reports - Run $RUN_ID (keeping last 10 reports)" || echo "Nothing to commit"
+            git push origin pages-reports || echo "Failed to push"
+          fi
+          git checkout -
+
+      - name: Output report URL
+        id: report-summary
+        run: |
+          REPO_NAME=$(echo "${{ github.repository }}" | awk -F'/' '{print $2}')
+          echo "## 📊 Test Report Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **This run's unique test report:**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$REPORT_URL" ]; then
+            echo "🔗 **Direct URL:** [View Report]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "🚫 GitHub Pages deployment skipped for branch ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "📋 **Report Details:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Run ID: \`$RUN_ID\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: \`$BRANCH_NAME\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: \`$SHORT_SHA\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Path: \`$UNIQUE_DIR\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Reports kept: \`${REMAINING_COUNT}/10\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🌐 **Main Index:** [View All Reports](https://${{ github.repository_owner }}.github.io/$REPO_NAME/)" >> $GITHUB_STEP_SUMMARY
+          echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
+
+  docker-build:
+    runs-on: ubuntu-latest
+    name: Build and Test Docker Image
+    needs: [lint, build]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update -qq >/dev/null 2>&1
+          sudo apt-get install -y -qq podman >/dev/null 2>&1
+
+      - name: Build Docker image with Podman
+        working-directory: ./farmerjoe
+        run: |
+          podman build -t farmerjoe:${{ github.sha }} .
+
+      - name: Test Docker image
+        run: |
+          # Run container in detached mode
+          podman run -d --name test-container -p 3000:3000 farmerjoe:${{ github.sha }}
+          sleep 5
+          # Test if container is running
+          podman ps | grep test-container
+          # Optional: Add health check
+          # curl --retry 5 --retry-delay 2 http://localhost:3000 || exit 1
+
+      - name: Cleanup
+        if: always()
+        run: |
+          podman stop test-container || true
+          podman rm test-container || true
+
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to Environment
+    needs: [build, e2e-tests, docker-build]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          fi
+      - name: Deploy to ${{ steps.env.outputs.environment }}
+        run: |
+          echo "Deploying to ${{ steps.env.outputs.environment }}"
+          # Add your deployment commands here
+
+  report-summary:
+    runs-on: ubuntu-latest
+    name: Publish Playwright Summary
+    needs: [e2e-tests, deploy-test-report]
+    if: always() && github.ref == 'refs/heads/main'
+    steps:
+      - name: Write final summary
+        run: |
+          echo "## 🧪 Playwright Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.e2e-tests.result }}" == "success" ]; then
+            echo "### ✅ Playwright suite completed successfully" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.e2e-tests.result }}" == "cancelled" ]; then
+            echo "### ⚠️ Playwright suite was cancelled" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Playwright suite failed" >> $GITHUB_STEP_SUMMARY
+            echo "Check the e2e-tests job logs for details." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.deploy-test-report.result }}" == "success" ] && [ -n "${{ needs.deploy-test-report.outputs.report_url }}" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🌐 **Live GitHub Pages report:**" >> $GITHUB_STEP_SUMMARY
+            echo "- [Open Playwright report](${{ needs.deploy-test-report.outputs.report_url }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ GitHub Pages report unavailable for this run." >> $GITHUB_STEP_SUMMARY
+            echo "- Branch: \`${{ github.ref }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- Ensure Pages environment allows deployments from this branch." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow:** \`${{ github.workflow }}\` | **Run ID:** \`${{ github.run_id }}\` | **Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+

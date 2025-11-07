@@ -1,0 +1,78 @@
+name: Deploy Artifact to GitHub Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_url:
+        description: 'Artifact download URL'
+        required: true
+        type: string
+        default: 'https://github.com/cryptobonifac/farmerjoe/actions/runs/19175489748/artifacts/4501785322'
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract artifact info from URL
+        id: extract
+        run: |
+          URL="${{ github.event.inputs.artifact_url }}"
+          # Extract run ID and artifact ID from URL
+          RUN_ID=$(echo $URL | grep -oP 'runs/\K[0-9]+')
+          ARTIFACT_ID=$(echo $URL | grep -oP 'artifacts/\K[0-9]+')
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+          echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: artifact-${{ steps.extract.outputs.artifact_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.extract.outputs.run_id }}
+          path: ./artifact-download
+
+      - name: List downloaded files
+        run: |
+          echo "Downloaded artifact contents:"
+          ls -la ./artifact-download
+
+      - name: Unzip artifact (if needed)
+        run: |
+          cd ./artifact-download
+          # Check if there are any zip files
+          if ls *.zip 1> /dev/null 2>&1; then
+            echo "Found zip files, extracting..."
+            for file in *.zip; do
+              unzip -o "$file"
+              rm "$file"
+            done
+          else
+            echo "No zip files found, proceeding with existing files"
+          fi
+          cd ..
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact to Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './artifact-download'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

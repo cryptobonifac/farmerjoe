@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  },
+  // Include Node.js specific TypeScript configuration
+  "include": ["farmerjoe/next.config.ts"],
+  "exclude": ["node_modules"]
+}
