@@ -56,9 +56,6 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             farmerjoe/package-lock.json
-          cache-dependency-path: |
-            package-lock.json
-            farmerjoe/package-lock.json
 
       - name: Install root dependencies
         run: npm ci
