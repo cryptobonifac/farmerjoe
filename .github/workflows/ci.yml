@@ -134,7 +134,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq >/dev/null 2>&1
           # Install Playwright system dependencies (always needed, even with cached browsers)
           echo "Installing system dependencies for Playwright browsers..."
           # Install deps for all browsers - this ensures WebKit dependencies are installed
@@ -147,8 +147,8 @@ jobs:
 
       - name: Install Podman
         run: |
-          sudo apt-get update
-          sudo apt-get install -y podman podman-compose
+          sudo apt-get update -qq >/dev/null 2>&1
+          sudo apt-get install -y -qq podman podman-compose >/dev/null 2>&1
 
       - name: Start Podman socket
         run: |
@@ -517,8 +517,8 @@ jobs:
 
       - name: Install Podman
         run: |
-          sudo apt-get update
-          sudo apt-get install -y podman
+          sudo apt-get update -qq >/dev/null 2>&1
+          sudo apt-get install -y -qq podman >/dev/null 2>&1
 
       - name: Build Docker image with Podman
         working-directory: ./farmerjoe
