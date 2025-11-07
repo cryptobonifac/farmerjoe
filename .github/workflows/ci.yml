@@ -214,9 +214,9 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "📊 **View Test Report:**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            if [ "${{ github.event_name }}" == "push" ]; then
+            if [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
               echo "🌐 **Published to GitHub Pages:**" >> $GITHUB_STEP_SUMMARY
-              echo "- Each CI run gets a **unique test report URL**" >> $GITHUB_STEP_SUMMARY
+              echo "- Main branch runs publish a **unique test report URL**" >> $GITHUB_STEP_SUMMARY
               echo "- This run's report will be available at a unique path" >> $GITHUB_STEP_SUMMARY
               echo "- Check the \`deploy-test-report\` job below for the exact URL" >> $GITHUB_STEP_SUMMARY
               REPO_NAME=$(echo "${{ github.repository }}" | awk -F'/' '{print $2}')
@@ -227,11 +227,13 @@ jobs:
               echo "- Main index: \`https://${{ github.repository_owner }}.github.io/$REPO_NAME/\`" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
             fi
-            echo "📦 **Download Artifact:**" >> $GITHUB_STEP_SUMMARY
-            echo "1. Go to the [Actions tab](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
-            echo "2. Scroll down to the **Artifacts** section" >> $GITHUB_STEP_SUMMARY
-            echo "3. Download the \`playwright-report\` artifact" >> $GITHUB_STEP_SUMMARY
-            echo "4. Extract the zip file and open \`index.html\` in your browser" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ github.event_name }}" == "push" ] && { [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.ref }}" == "refs/heads/develop" ]; }; then
+              echo "- ✅ GitHub Pages deployment is enabled for this branch" >> $GITHUB_STEP_SUMMARY
+              echo "- See the \`deploy-test-report\` job below for the live report URL" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- ℹ️ GitHub Pages deployment runs only on \\`main\\` and \\`develop\\`" >> $GITHUB_STEP_SUMMARY
+              echo "- You can manually run the workflow on one of those branches to publish a page" >> $GITHUB_STEP_SUMMARY
+            fi
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Quick Links:**" >> $GITHUB_STEP_SUMMARY
             echo "- [View this workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
@@ -254,7 +256,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy Test Report to GitHub Pages
     needs: [e2e-tests]
-    if: always() && github.event_name == 'push'
+    if: always() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     permissions:
       contents: read
       pages: write
