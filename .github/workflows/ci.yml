@@ -214,7 +214,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy Test Report to GitHub Pages
     needs: [e2e-tests]
-    if: always() && github.event_name == 'push'
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     outputs:
       report_url: ${{ steps.report-summary.outputs.report_url }}
       unique_dir: ${{ steps.prepare-report.outputs.unique_dir }}
@@ -223,8 +223,8 @@ jobs:
       pages: write
       id-token: write
     environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      name: ${{ github.ref == 'refs/heads/main' && 'github-pages' || format('report-preview-{0}', github.ref_name) }}
+      url: ${{ github.ref == 'refs/heads/main' && steps.deployment.outputs.page_url || '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -241,31 +241,20 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-      - name: Determine Pages deployment target
-        id: pages-target
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "deploy=true" >> $GITHUB_OUTPUT
-          else
-            echo "deploy=false" >> $GITHUB_OUTPUT
-          fi
-
+ 
       - name: Fetch existing reports from pages branch
         run: |
-          if [ "${{ steps.pages-target.outputs.deploy }}" == "true" ]; then
-            git fetch origin +refs/heads/pages-reports:refs/remotes/origin/pages-reports 2>/dev/null || echo "No pages-reports branch found"
+          git fetch origin +refs/heads/pages-reports:refs/remotes/origin/pages-reports 2>/dev/null || echo "No pages-reports branch found"
 
-            if git show-ref --verify --quiet refs/remotes/origin/pages-reports; then
-              git checkout -b pages-reports origin/pages-reports 2>/dev/null || git checkout pages-reports 2>/dev/null || true
-              if [ -d "runs" ]; then
-                mkdir -p ../existing-pages
-                cp -r runs ../existing-pages/ 2>/dev/null || true
-              fi
-              git checkout -
-            else
+          if git show-ref --verify --quiet refs/remotes/origin/pages-reports; then
+            git checkout -b pages-reports origin/pages-reports 2>/dev/null || git checkout pages-reports 2>/dev/null || true
+            if [ -d "runs" ]; then
               mkdir -p ../existing-pages
+              cp -r runs ../existing-pages/ 2>/dev/null || true
             fi
+            git checkout -
+          else
+            mkdir -p ../existing-pages
           fi
 
       - name: Prepare unique report directory and cleanup old reports
@@ -429,57 +418,41 @@ jobs:
           echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
           UNIQUE_DIR_PATH="runs/${UNIQUE_DIR}"
           echo "UNIQUE_DIR=${UNIQUE_DIR_PATH}" >> $GITHUB_ENV
-          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            echo "REPORT_URL=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/${UNIQUE_DIR_PATH}/" >> $GITHUB_ENV
-          fi
-          echo "RUN_ID=${RUN_ID}" >> $GITHUB_ENV
-          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
-          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
-          echo "unique_dir=${UNIQUE_DIR_PATH}" >> $GITHUB_OUTPUT
-          if [ -n "$REPORT_URL" ]; then
-            echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
-          fi
+          echo "report_url=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/${UNIQUE_DIR_PATH}/" >> $GITHUB_ENV
 
       - name: Setup Pages
-        if: ${{ steps.pages-target.outputs.deploy == 'true' }}
         uses: actions/configure-pages@v4
 
       - name: Upload artifact
-        if: ${{ steps.pages-target.outputs.deploy == 'true' }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: pages-report/
 
       - name: Deploy to GitHub Pages
-        if: ${{ steps.pages-target.outputs.deploy == 'true' }}
         id: deployment
         uses: actions/deploy-pages@v4
 
       - name: Update pages-reports branch
         run: |
-          if [ "${{ steps.pages-target.outputs.deploy }}" == "true" ]; then
-            if git show-ref --verify --quiet refs/remotes/origin/pages-reports; then
-              git checkout -b pages-reports origin/pages-reports 2>/dev/null || git checkout pages-reports
-            else
-              git checkout --orphan pages-reports
-              git rm -rf . 2>/div/null || true
-            fi
-
-            rm -rf runs/ index.html 2>/dev/null || true
-            cp -r pages-report/runs . 2>/dev/null || true
-            cp pages-report/index.html . 2>/dev/null || true
-
-            git add runs/ index.html 2>/dev/null || true
-            if git diff --staged --quiet; then
-              echo "No changes to commit"
-            else
-              git commit -m "Update test reports - Run $RUN_ID (keeping last 10 reports)" || echo "Nothing to commit"
-              git push origin pages-reports || echo "Failed to push"
-            fi
-            git checkout -
+          if git show-ref --verify --quiet refs/remotes/origin/pages-reports; then
+            git checkout -b pages-reports origin/pages-reports 2>/dev/null || git checkout pages-reports
           else
-            echo "Skipping Pages branch update for non-main branch"
+            git checkout --orphan pages-reports
+            git rm -rf . 2>/dev/null || true
           fi
+
+          rm -rf runs/ index.html 2>/dev/null || true
+          cp -r pages-report/runs . 2>/dev/null || true
+          cp pages-report/index.html . 2>/dev/null || true
+
+          git add runs/ index.html 2>/div/null || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update test reports - Run $RUN_ID (keeping last 10 reports)" || echo "Nothing to commit"
+            git push origin pages-reports || echo "Failed to push"
+          fi
+          git checkout -
 
       - name: Output report URL
         id: report-summary
@@ -504,9 +477,7 @@ jobs:
           echo "- Reports kept: \`${REMAINING_COUNT}/10\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🌐 **Main Index:** [View All Reports](https://${{ github.repository_owner }}.github.io/$REPO_NAME/)" >> $GITHUB_STEP_SUMMARY
-          if [ -n "$REPORT_URL" ]; then
-            echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
-          fi
+          echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
 
   docker-build:
     runs-on: ubuntu-latest
@@ -566,7 +537,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Publish Playwright Summary
     needs: [e2e-tests, deploy-test-report]
-    if: always()
+    if: always() && github.ref == 'refs/heads/main'
     steps:
       - name: Write final summary
         run: |
