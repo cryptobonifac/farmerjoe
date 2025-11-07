@@ -384,59 +384,59 @@ jobs:
           fi
           
           # Create index.html with all reports
-          cat > pages-report/index.html << EOF
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Playwright Test Reports</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 40px; background: #f5f5f5; }
-        .container { max-width: 900px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        h1 { color: #24292e; border-bottom: 3px solid #0366d6; padding-bottom: 15px; margin-top: 0; }
-        .latest { background: #e6f7ff; border-left: 4px solid #0366d6; padding: 15px; margin: 20px 0; border-radius: 4px; }
-        .latest h2 { margin-top: 0; color: #0366d6; }
-        ul { list-style: none; padding: 0; margin: 20px 0; }
-        li { margin: 12px 0; padding: 15px; background: #f8f9fa; border-left: 4px solid #0366d6; border-radius: 4px; transition: background 0.2s; }
-        li:hover { background: #e9ecef; }
-        a { color: #0366d6; text-decoration: none; font-weight: 500; font-size: 16px; }
-        a:hover { text-decoration: underline; }
-        .meta { color: #586069; font-size: 0.9em; margin-top: 8px; }
-        .badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 0.85em; font-weight: 600; margin-left: 8px; }
-        .badge-branch { background: #d1ecf1; color: #0c5460; }
-        .badge-sha { background: #f8d7da; color: #721c24; }
-        .badge-run { background: #d4edda; color: #155724; }
-      </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🧪 Playwright Test Reports</h1>
-        
-        <div class="latest">
-            <h2>📊 Latest Test Run</h2>
-            <p><strong><a href="runs/${LATEST_REPORT}/index.html">Run ${LATEST_RUN_NUM}</a></strong></p>
-            <div class="meta">
-                <span class="badge badge-branch">${LATEST_BRANCH}</span>
-                <span class="badge badge-sha">${LATEST_SHA}</span>
-                <span class="badge badge-run">Run #${LATEST_RUN_NUM}</span>
-                <br>
-                <strong>Timestamp:</strong> ${LATEST_TS} UTC
-            </div>
-        </div>
-        
-        <h2>Recent Test Runs (Last ${REMAINING_COUNT})</h2>
-        <ul>
-            ${REPORT_LIST}
-        </ul>
-        
-        <p style="color: #586069; font-size: 0.9em; margin-top: 30px;">
-            Showing the last 10 test reports. Older reports are automatically removed to save space.
-        </p>
-    </div>
-</body>
-</html>
-EOF
+          cat <<'EOF' > pages-report/index.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Playwright Test Reports</title>
+              <style>
+                  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 40px; background: #f5f5f5; }
+                  .container { max-width: 900px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+                  h1 { color: #24292e; border-bottom: 3px solid #0366d6; padding-bottom: 15px; margin-top: 0; }
+                  .latest { background: #e6f7ff; border-left: 4px solid #0366d6; padding: 15px; margin: 20px 0; border-radius: 4px; }
+                  .latest h2 { margin-top: 0; color: #0366d6; }
+                  ul { list-style: none; padding: 0; margin: 20px 0; }
+                  li { margin: 12px 0; padding: 15px; background: #f8f9fa; border-left: 4px solid #0366d6; border-radius: 4px; transition: background 0.2s; }
+                  li:hover { background: #e9ecef; }
+                  a { color: #0366d6; text-decoration: none; font-weight: 500; font-size: 16px; }
+                  a:hover { text-decoration: underline; }
+                  .meta { color: #586069; font-size: 0.9em; margin-top: 8px; }
+                  .badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 0.85em; font-weight: 600; margin-left: 8px; }
+                  .badge-branch { background: #d1ecf1; color: #0c5460; }
+                  .badge-sha { background: #f8d7da; color: #721c24; }
+                  .badge-run { background: #d4edda; color: #155724; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>🧪 Playwright Test Reports</h1>
+                  
+                  <div class="latest">
+                      <h2>📊 Latest Test Run</h2>
+                      <p><strong><a href="runs/${LATEST_REPORT}/index.html">Run ${LATEST_RUN_NUM}</a></strong></p>
+                      <div class="meta">
+                          <span class="badge badge-branch">${LATEST_BRANCH}</span>
+                          <span class="badge badge-sha">${LATEST_SHA}</span>
+                          <span class="badge badge-run">Run #${LATEST_RUN_NUM}</span>
+                          <br>
+                          <strong>Timestamp:</strong> ${LATEST_TS} UTC
+                      </div>
+                  </div>
+                  
+                  <h2>Recent Test Runs (Last ${REMAINING_COUNT})</h2>
+                  <ul>
+                      ${REPORT_LIST}
+                  </ul>
+                  
+                  <p style="color: #586069; font-size: 0.9em; margin-top: 30px;">
+                      Showing the last 10 test reports. Older reports are automatically removed to save space.
+                  </p>
+              </div>
+          </body>
+          </html>
+          EOF
           
           # Save metadata for summary
           echo "UNIQUE_DIR=${UNIQUE_DIR}" >> $GITHUB_ENV
@@ -548,8 +548,8 @@ EOF
           elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
             echo "environment=staging" >> $GITHUB_OUTPUT
           fi
-
       - name: Deploy to ${{ steps.env.outputs.environment }}
         run: |
           echo "Deploying to ${{ steps.env.outputs.environment }}"
           # Add your deployment commands here
+
