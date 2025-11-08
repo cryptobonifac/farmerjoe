@@ -12,7 +12,7 @@
 
 ## 2. Authentication & Authorization
 - Supabase project (Auth enabled)
-- Enable Google, Facebook, Instagram providers
+- Enable Google, Facebook, Twitter
 - Build AuthProvider and login/register pages
 - Implement route protection (withAuth HOC)
 - Extend users table with `role` column (producer / customer)

@@ -7,8 +7,10 @@ test-results
 .pnp.js
 
 
-# Testing
+# Testing2
 /coverage
+playwright-report/
+test-results/
 
 # Production
 /build

@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Farmer Joe Web – Authenticated App Shell
 
-## Getting Started
+This folder contains the Next.js 16 application for the Farmer Joe marketplace. The app now ships with Supabase-backed authentication, role-aware routing, and starter flows for email/password and social sign-in.
 
-First, run the development server:
+---
+
+## 1. Prerequisites
+
+- Node.js 18+ (the pipeline uses v24)
+- A Supabase project with Google, Facebook, and Instagram OAuth providers enabled
+- Supabase project values:
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  - (optional) `NEXT_PUBLIC_SUPABASE_REDIRECT_URL` for custom OAuth callbacks
+
+> ⚠️ Authentication is disabled until these environment variables are provided. The UI will surface a configuration warning when values are missing.
+
+---
+
+## 2. Configure Environment Variables
+
+Create a `.env.local` file at the project root (`farmerjoe/.env.local`) and populate it with your Supabase details:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-public-anon-key
+# Optional: customise where Supabase redirects after OAuth flows
+NEXT_PUBLIC_SUPABASE_REDIRECT_URL=http://localhost:3000/login
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Restart the dev server after updates so Next.js can pick up the new values.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 3. Available Scripts
 
-## Learn More
+Run from the `farmerjoe` directory:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# Start the development server
+npm run dev
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Compile production assets
+npm run build
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Lint the project
+npm run lint
+```
 
-## Deploy on Vercel
+The root `package.json` proxies common commands (`npm run dev`, `npm run build`, etc.) to this workspace if you prefer running from the repo root.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 4. Auth Features Included
+
+- Supabase client initialised with safe fallbacks for missing env configuration
+- `AuthProvider` to expose session, role, and helper methods across the app
+- Email/password login and registration flows, including role selection (producer or customer)
+- Social sign-in buttons for Google, Facebook, and Instagram
+- `withAuth` higher-order component for guarding routes with optional role restrictions
+- `unauthorized` page to handle blocked access
+
+> Roles are stored in each user's Supabase metadata. Ensure your Supabase auth schema includes a `role` field (e.g., via `auth.users` metadata or a dedicated profile table) so role-based gates can work reliably.
+
+---
+
+## 5. Next Steps
+
+- Add server-side role enforcement (e.g., using RLS policies or edge middleware)
+- Expand the dashboard with producer/customer-specific views
+- Hook registration into Supabase functions to persist richer profile data
+- Record OAuth redirect URL inside the Supabase dashboard to match `NEXT_PUBLIC_SUPABASE_REDIRECT_URL`
+
+---
+
+For broader project context, see the top-level `docs/plan.md`, which outlines the product roadmap and feature milestones.
