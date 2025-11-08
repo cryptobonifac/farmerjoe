@@ -356,7 +356,7 @@ jobs:
           fi
           
           # Create index.html with all reports
-          cat <<'EOF' > pages-report/index.html
+          cat <<EOF > pages-report/index.html
           <!DOCTYPE html>
           <html lang="en">
           <head>
@@ -434,6 +434,11 @@ jobs:
 
       - name: Update pages-reports branch
         run: |
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$CURRENT_BRANCH" = "HEAD" ]; then
+            CURRENT_BRANCH=${GITHUB_REF_NAME:-${GITHUB_REF##*/}}
+          fi
+
           if git show-ref --verify --quiet refs/remotes/origin/pages-reports; then
             git checkout -b pages-reports origin/pages-reports 2>/dev/null || git checkout pages-reports
           else
@@ -445,14 +450,17 @@ jobs:
           cp -r pages-report/runs . 2>/dev/null || true
           cp pages-report/index.html . 2>/dev/null || true
 
-          git add runs/ index.html 2>/div/null || true
+          git add runs/ index.html 2>/dev/null || true
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
             git commit -m "Update test reports - Run $RUN_ID (keeping last 10 reports)" || echo "Nothing to commit"
             git push origin pages-reports || echo "Failed to push"
           fi
-          git checkout -
+
+          if [ -n "$CURRENT_BRANCH" ]; then
+            git checkout "$CURRENT_BRANCH" || true
+          fi
 
       - name: Output report URL
         id: report-summary
@@ -532,6 +540,65 @@ jobs:
         run: |
           echo "Deploying to ${{ steps.env.outputs.environment }}"
           # Add your deployment commands here
+
+
+  deploy-vercel:
+    runs-on: ubuntu-latest
+    name: Deploy to Vercel
+    needs: [build, e2e-tests, docker-build]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Check if Vercel token is set
+        id: check-token
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "⚠️ VERCEL_TOKEN not set, skipping deployment" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout repository
+        if: steps.check-token.outputs.skip != 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.check-token.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            farmerjoe/package-lock.json
+
+      - name: Install root dependencies
+        if: steps.check-token.outputs.skip != 'true'
+        run: npm ci
+
+      - name: Install app dependencies
+        if: steps.check-token.outputs.skip != 'true'
+        working-directory: ./farmerjoe
+        run: npm ci
+
+      - name: Pull Vercel environment information
+        if: steps.check-token.outputs.skip != 'true'
+        working-directory: ./farmerjoe
+        run: npx vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+
+      - name: Build deployment package
+        if: steps.check-token.outputs.skip != 'true'
+        working-directory: ./farmerjoe
+        run: npx vercel build --prod --token "$VERCEL_TOKEN"
+
+      - name: Deploy to Vercel
+        if: steps.check-token.outputs.skip != 'true'
+        working-directory: ./farmerjoe
+        run: npx vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"
 
   report-summary:
     runs-on: ubuntu-latest
