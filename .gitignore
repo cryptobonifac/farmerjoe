@@ -1,6 +1,7 @@
 # Dependencies
 node_modules
 test-results
+.vercel
 
 /.pnp
 .pnp.js
