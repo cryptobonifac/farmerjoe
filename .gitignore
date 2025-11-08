@@ -42,3 +42,4 @@ lerna-debug.log*
 Thumbs.db
 .thumbsdb
 node_modules
+.vercel

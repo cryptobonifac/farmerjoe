@@ -541,6 +541,47 @@ jobs:
           echo "Deploying to ${{ steps.env.outputs.environment }}"
           # Add your deployment commands here
 
+  deploy-vercel:
+    runs-on: ubuntu-latest
+    name: Deploy to Vercel
+    needs: [build, e2e-tests, docker-build]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.VERCEL_TOKEN != '' }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID || '' }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID || '' }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN || '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            farmerjoe/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install app dependencies
+        working-directory: ./farmerjoe
+        run: npm ci
+
+      - name: Pull Vercel environment information
+        working-directory: ./farmerjoe
+        run: npx vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+
+      - name: Build deployment package
+        working-directory: ./farmerjoe
+        run: npx vercel build --prod --token "$VERCEL_TOKEN"
+
+      - name: Deploy to Vercel
+        working-directory: ./farmerjoe
+        run: npx vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+
   report-summary:
     runs-on: ubuntu-latest
     name: Publish Playwright Summary
