@@ -547,9 +547,9 @@ jobs:
     needs: [build, e2e-tests, docker-build]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.VERCEL_TOKEN != '' }}
     env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID || '' }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID || '' }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN || '' }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
